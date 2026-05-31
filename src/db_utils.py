@@ -24,6 +24,7 @@ class DbWrapper:
         # 1. Setup / Connect
         conn = sqlite3.connect(str(self.db_path))
         cursor = conn.cursor()
+        self.log.info("Database connection opened.")
         
         try:
             # 2. Yield the cursor back to the 'with' block

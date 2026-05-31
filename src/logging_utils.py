@@ -55,14 +55,19 @@ class Logger:
         
         # Create formatters
         detailed_formatter = logging.Formatter(
-            '[%(asctime)s][%(name)s][%(funcName)s][%(levelname)s][%(message)s]',
+            '[%(asctime)s][%(name)s][%(funcName)s][%(levelname)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        console_formatter = logging.Formatter(
+            '[%(asctime)s][%(funcName)s] %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         
         # Console handler (INFO level and above)
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(detailed_formatter)
+        console_handler.setFormatter(console_formatter)
         self.logger.addHandler(console_handler)
         
         # File handler (DEBUG level and above)
