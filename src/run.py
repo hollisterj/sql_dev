@@ -3,7 +3,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Optional
 from contextlib import contextmanager
-from . import create_db, test_sql_command, db_session
+from . import DbWrapper
 
 if __name__ == "__main__":
     # Check if we're running from the project root
@@ -12,8 +12,9 @@ if __name__ == "__main__":
         exit(1)
 
     # Create an empty database
-    ok, db_path = create_db('test.db', overwrite=True)
-    if not ok or db_path is None:
+    db = DbWrapper('test.db')
+    ok = db.create_db(overwrite=True)
+    if not ok:
         print("Failed to create database. Exiting.")
         exit(1)
     
@@ -28,14 +29,9 @@ if __name__ == "__main__":
     "INSERT INTO users (name, age) VALUES ('Bob', 25);",
     ]
 
-    with db_session(db_path) as cursor:
-        for cmd in cmds:
-            print(f"Attempting command: {cmd}", end=' ... ')
-            ok, err = test_sql_command(cursor, cmd)
-            if not ok:
-                print("Test failed. Exiting command loop")
-                break
-            cursor.execute(cmd)
-            cursor.connection.commit()
-            print("Command executed successfully.")
-    
+    with db.session() as cursor:
+        while cmds:
+            sql = cmds.pop(0)
+            db.command_history.append(sql)
+            db.test_and_execute(cursor, sql)
+                
