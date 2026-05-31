@@ -18,10 +18,6 @@ def db_session(db_path: Path):
         # 2. Yield the cursor back to the 'with' block
         yield cursor
         
-        # 3. If no errors occurred in the 'with' block, commit the changes
-        conn.commit()
-        print("Transaction committed successfully.")
-        
     except sqlite3.Error as e:
         # 4. If any database error happened, undo the changes
         conn.rollback()
@@ -33,58 +29,61 @@ def db_session(db_path: Path):
         conn.close()
         print("Database connection closed.")
 
-def create_db(name:str ="my_database.db", overwrite:bool = False):
-       
-    db_target = DB_DIR / name
-    if db_target.exists():
-        if not overwrite:
-            print(f"Database {name} already exists. Use overwrite=True to recreate it.")
-            return None
-        else:
-            print(f"Overwriting existing database {name}...")
-            db_target.unlink()  # Remove the existing file
-    
-    # Create and close
-    conn = sqlite3.connect(str(db_target))
-    conn.close()
-    print(f"Database {DB_DIR}\\{name} created successfully!")
-    return conn
 
-def test_sql_command(db_path: str, sql: str, params: tuple[Any, ...] = ()) -> tuple[bool, Optional[str]]:
+def test_sql_command(db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> tuple[bool, Optional[str]]:
     """
-    Tests an SQL command against the database without saving changes.
-    
-    Returns:
-        (True, None) if the command is valid and runs successfully.
-        (False, "Error Message") if the command fails.
+    Tests ANY SQL command (including CREATE TABLE) by safely copying 
+    the schema to a temporary in-memory database. Your real file is never touched.
     """
-    # Connect to the database
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+
+    # 2. Create a completely isolated, temporary database in RAM
+    test_conn = sqlite3.connect(":memory:")
     
     try:
-        # 1. Start a manual transaction block
-        cursor.execute("BEGIN TRANSACTION;")
+        # 3. Clone the existing schema from your real DB to the memory DB
+        # This ensures the test DB has all the same tables and structures
+        real_conn = db_cursor.connection
+        real_conn.backup(test_conn)
         
-        # 2. Try executing the user's command
-        cursor.execute(sql, params)
+        # 4. Try running the command on the isolated memory database
+        test_cursor = test_conn.cursor()
+        test_cursor.execute(sql, params)
         
-        # If it's a SELECT statement, we can even test if fetching works
+        # If it's a SELECT, verify it can fetch
         if sql.strip().upper().startswith("SELECT"):
-            cursor.fetchone()
+            test_cursor.fetchone()
             
         success = True
         error_message = None
         
     except sqlite3.Error as e:
-        # If SQLite rejects the command for any reason, catch the error
         success = False
         error_message = str(e)
         
     finally:
-        # 3. CRITICAL: Rollback everything. 
-        # Even if the SQL succeeded, we undo it so it acts as a test.
-        conn.rollback()
-        conn.close()
+        # 5. Clean up. Closing the memory connection instantly wipes it from RAM.
+        test_conn.close()
         
     return success, error_message
+
+
+def create_db(name:str ="test.db", overwrite:bool = False) -> tuple[bool, Optional[Path]]:
+    
+    db_target = DB_DIR / name
+    if db_target.exists():
+        if not overwrite:
+            print(f"Database {name} already exists. Use overwrite=True to recreate it.")
+            return False, None
+        else:
+            print(f"Overwriting existing database {name}...")
+            db_target.unlink()  # Remove the existing file
+    
+    # Create and close
+    try:
+        conn = sqlite3.connect(str(db_target))
+        conn.close()
+        print(f"Database {DB_DIR}\\{name} created successfully!")
+    except sqlite3.Error as e:
+        print(f"Failed to create database {name}: {e}")
+        return False, None
+    return True, db_target
