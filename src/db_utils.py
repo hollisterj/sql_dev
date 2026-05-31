@@ -2,7 +2,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Optional
 from contextlib import contextmanager
-
+from . import Logger
 class DbWrapper:
     DB_DIR = Path('./db/')
 
@@ -13,6 +13,7 @@ class DbWrapper:
     def __init__(self, name: str):
         self.db_path = DbWrapper.DB_DIR / name
         self.command_history = []
+        self.log = Logger(name=f"{self.__class__.__name__}({name})", label=name)
 
     @contextmanager
     def session(self):
@@ -31,41 +32,41 @@ class DbWrapper:
         except sqlite3.Error as e:
             # 4. If any database error happened, undo the changes
             conn.rollback()
-            print(f"Transaction rolled back due to error: {e}")
+            self.log.error(f"Transaction rolled back due to error: {e}")
             raise # Re-raise the error so the main application knows it failed
             
         finally:
             # 5. Teardown / Always close the connection
             conn.close()
-            print("Database connection closed.")
+            self.log.info("Database connection closed.")
 
     def create_db(self, overwrite:bool = False) -> tuple[bool, Optional[Path]]:
         
         if self.db_path.exists():
             if not overwrite:
-                print(f"Database {self.db_path} already exists. Use overwrite=True to recreate it.")
+                self.log.error(f"Database {self.db_path} already exists. Use overwrite=True to recreate it.")
                 return False
             else:
-                print(f"Overwriting existing database {self.db_path}...")
+                self.log.debug(f"Overwriting existing database {self.db_path}...")
                 self.db_path.unlink()  # Remove the existing file
         
         # Create and close
         try:
             conn = sqlite3.connect(str(self.db_path))
             conn.close()
-            print(f"Database {self.db_path} created successfully!")
+            self.log.info(f"Database {self.db_path} created successfully!")
         except sqlite3.Error as e:
-            print(f"Failed to create database {self.db_path}: {e}")
+            self.log.error(f"Failed to create database {self.db_path}: {e}")
             return False
         return True
     
-    def test_sql_command(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> tuple[bool, Optional[str]]:
+    def dry_run(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> tuple[bool, Optional[str]]:
         """
         Tests ANY SQL command (including CREATE TABLE) by safely copying 
         the schema to a temporary in-memory database.
         """
 
-        print(f"Dry run: {sql}", end=' ... ')
+        self.log.debug(f"{sql}")
 
         # 2. Create a completely isolated, temporary database in RAM
         test_conn = sqlite3.connect(":memory:")
@@ -95,23 +96,29 @@ class DbWrapper:
             # 5. Clean up. Closing the memory connection instantly wipes it from RAM.
             test_conn.close()
         
-        print("Pass" if success else f"Fail: {error_message}")
+        if success:
+            self.log.debug("Pass")
+        else:
+            self.log.info(f"{sql}")
+            self.log.error(f"Fail - {error_message}")
         return success, error_message
 
-    def execute_sql_command(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> bool:
+    def execute(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> bool:
         """
-        Executes a SQL command on the real database. Use this after testing with test_sql_command.
+        Executes a SQL command on the real database. Use this after testing with dry_run.
         """
-        print(f"Executing: {sql}", end=' ... ')
+        self.log.info(f"{sql}")
         try:
             db_cursor.execute(sql, params)
             db_cursor.connection.commit()
             success = True
         except sqlite3.Error as e:
-            print(f"Failed to execute command: {e}")
+            self.log.error(f"Failed - {e}")
             success = False
-
-        print("Success\n" if success else f"Failure: {e}\n")
+        if success:
+            self.log.info(f"Success\n")
+        else:
+            self.log.error(f"Failure: {e}\n")
         return success
 
     def test_and_execute_sql_command(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> bool:
@@ -119,9 +126,9 @@ class DbWrapper:
         Combines testing and executing a SQL command. First tests the command on an isolated memory DB,
         and if it succeeds, executes it on the real database.
         """
-        ok, err = self.test_sql_command(db_cursor, sql, params)
+        ok, err = self.dry_run(db_cursor, sql, params)
         if not ok:
-            print(f"Test failed for command: {sql}. Error: {err}")
+            self.log.error(f"Test failed for command: {sql}. Error: {err}")
             return False
         
-        return self.execute_sql_command(db_cursor, sql, params)
+        return self.execute(db_cursor, sql, params)
