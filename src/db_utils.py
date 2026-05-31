@@ -12,7 +12,7 @@ class DbWrapper:
     """
     def __init__(self, name: str):
         self.db_path = DbWrapper.DB_DIR / name
-        self.command_history = []  # Optional: Store command history for debugging or logging
+        self.command_history = []
 
     @contextmanager
     def session(self):
@@ -39,7 +39,6 @@ class DbWrapper:
             conn.close()
             print("Database connection closed.")
 
-
     def create_db(self, overwrite:bool = False) -> tuple[bool, Optional[Path]]:
         
         if self.db_path.exists():
@@ -60,7 +59,6 @@ class DbWrapper:
             return False
         return True
     
-
     def test_sql_command(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> tuple[bool, Optional[str]]:
         """
         Tests ANY SQL command (including CREATE TABLE) by safely copying 
@@ -100,7 +98,7 @@ class DbWrapper:
         print("Pass" if success else f"Fail: {error_message}")
         return success, error_message
 
-    def execute_command(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> bool:
+    def execute_sql_command(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> bool:
         """
         Executes a SQL command on the real database. Use this after testing with test_sql_command.
         """
@@ -113,10 +111,10 @@ class DbWrapper:
             print(f"Failed to execute command: {e}")
             success = False
 
-        print("Success" if success else f"Failure: {e}")
+        print("Success\n" if success else f"Failure: {e}\n")
         return success
 
-    def test_and_execute(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> bool:
+    def test_and_execute_sql_command(self, db_cursor: sqlite3.Cursor, sql: str, params: tuple[Any, ...] = ()) -> bool:
         """
         Combines testing and executing a SQL command. First tests the command on an isolated memory DB,
         and if it succeeds, executes it on the real database.
@@ -126,4 +124,4 @@ class DbWrapper:
             print(f"Test failed for command: {sql}. Error: {err}")
             return False
         
-        return self.execute_command(db_cursor, sql, params)
+        return self.execute_sql_command(db_cursor, sql, params)

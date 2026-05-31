@@ -1,8 +1,4 @@
-import cmd
 from pathlib import Path
-import sqlite3
-from typing import Any, Optional
-from contextlib import contextmanager
 from . import DbWrapper
 
 if __name__ == "__main__":
@@ -33,5 +29,5 @@ if __name__ == "__main__":
         while cmds:
             sql = cmds.pop(0)
             db.command_history.append(sql)
-            db.test_and_execute(cursor, sql)
-                
+            db.test_and_execute_sql_command(cursor, sql)
+    
