@@ -1,0 +1,5 @@
+*.pyc
+
+# Ignore everything inside the db directory except .gitkeep
+db/**/*
+!db/.gitkeep
